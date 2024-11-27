@@ -6,74 +6,67 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
-import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
-
+import de.robv.android.xposed.callbacks.XC_LoadPackage
+import java.lang.reflect.Field
 
 class Tutorial : IXposedHookLoadPackage {
-    @Throws(Throwable::class)
-    override fun handleLoadPackage(lpparam: LoadPackageParam) {
-//        XposedBridge.log("Loaded app: " + lpparam.packageName)
-//        if (lpparam.packageName == "xyz.ibo.ibolsposed") {
-//            XposedBridge.log("Loaded app Ibo: ${lpparam.packageName}")
-//
-//            XposedHelpers.findAndHookMethod(
-//                "xyz.ibo.ibolsposed.MainActivity",
-//                lpparam.classLoader,
-//                "onCreate",
-//                android.os.Bundle::class.java,
-//                object : XC_MethodHook() {
-//                    @Throws(Throwable::class)
-//                    override fun afterHookedMethod(param: MethodHookParam) {
-//                        val activity = param.thisObject as Activity
-//                        XposedBridge.log("Hooked MainActivity: ${activity.localClassName}")
-//
-//                        activity.runOnUiThread {
-//                            val textView = TextView(activity)
-//                            textView.text = "Hello from Xposed Hook!"
-//                            textView.textSize = 20f
-//                            textView.setPadding(50, 50, 50, 50)
-//
-//                            activity.setContentView(textView) // Replace the content
-//                        }
-//                    }
-//                }
-//            )
-//        }
-//
-//        XposedHelpers.findAndHookMethod(
-//            "java.lang.ClassLoader",
-//            lpparam.classLoader,
-//            "loadClass",
-//            String::class.java,
-//            Boolean::class.javaPrimitiveType, // second parameter: resolve
-//            object : XC_MethodHook() {
-//                override fun beforeHookedMethod(param: MethodHookParam) {
-//                    val className = param.args[0] as String
-//                    XposedBridge.log("Class being loaded: $className")
-//                }
-//            }
-//        )
-//        XposedHelpers.findAndHookMethod(
-//            "android.hardware.SensorManager",
-//            lpparam.classLoader,
-//            "registerListener",
-//            SensorEventListener::class.java, // Listener
-//            Sensor::class.java,             // Sensor
-//            Int::class.java,                // Sampling rate
-//            object : XC_MethodHook() {
-//                override fun afterHookedMethod(param: MethodHookParam) {
-//                    val sensor = param.args[1] as Sensor
-//                    XposedBridge.log("Sensor registered: ${sensor.name}")
-//
-//                    // Check if it's the accelerometer or gyroscope
-//                    if (sensor.type == Sensor.TYPE_ACCELEROMETER || sensor.type == Sensor.TYPE_GYROSCOPE) {
-//                        XposedBridge.log("Intercepting sensor: ${sensor.name}")
-//                    }
-//                }
-//            }
-//        )
+    override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
+        XposedBridge.log("Global sensor spoofing initialized for ${lpparam.packageName}")
 
+        XposedHelpers.findAndHookMethod(
+            SensorManager::class.java,
+            "registerListener",
+            SensorEventListener::class.java,
+            Sensor::class.java,
+            Int::class.java,
+            Int::class.java,
+            object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    val listener = param.args[0] as SensorEventListener
+                    val sensor = param.args[1] as Sensor
 
+                    // Apply spoofing for accelerometer
+                    if (sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                        XposedBridge.log("Intercepted accelerometer registration globally")
+
+                        // Start a thread to inject fake sensor data
+                        Thread {
+                            try {
+                                while (true) {
+                                    val fakeEvent = createFakeSensorEvent(sensor)
+                                    setSensorValues(fakeEvent, floatArrayOf(1.0f, 2.0f, 3.0f)) // Set spoofed values
+                                    fakeEvent.timestamp = System.nanoTime()
+
+                                    listener.onSensorChanged(fakeEvent)
+                                    Thread.sleep(100) // Update frequency
+                                }
+                            } catch (e: Exception) {
+                                XposedBridge.log("Error in global spoofing thread: ${e.message}")
+                            }
+                        }.start()
+                    }
+                }
+            }
+        )
+    }
+
+    private fun createFakeSensorEvent(sensor: Sensor): SensorEvent {
+        // Create an instance of SensorEvent using reflection
+        val event = XposedHelpers.newInstance(SensorEvent::class.java, 3) as SensorEvent
+        event.sensor = sensor
+        return event
+    }
+
+    private fun setSensorValues(event: SensorEvent, values: FloatArray) {
+        try {
+            // Access the 'values' field of SensorEvent using reflection
+            val valuesField: Field = SensorEvent::class.java.getDeclaredField("values")
+            valuesField.isAccessible = true
+            valuesField.set(event, values)
+        } catch (e: Exception) {
+            XposedBridge.log("Error setting sensor values: ${e.message}")
+        }
     }
 }
