@@ -38,6 +38,7 @@ class Tutorial : IXposedHookLoadPackage {
                                     val fakeEvent = createFakeSensorEvent(sensor)
                                     setSensorValues(fakeEvent, floatArrayOf(1.0f, 2.0f, 3.0f)) // Set spoofed values
                                     fakeEvent.timestamp = System.nanoTime()
+                                    XposedBridge.log("Sending fake sensor data: ${fakeEvent.values.contentToString()}")
 
                                     listener.onSensorChanged(fakeEvent)
                                     Thread.sleep(100) // Update frequency
