@@ -13,8 +13,7 @@ import java.lang.reflect.Field
 
 class Tutorial : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        // Debug: Log the loaded package name
-        XposedBridge.log("Loaded package: ${lpparam.packageName}")
+        XposedBridge.log("[Tutorial] Loaded package: ${lpparam.packageName}")
 
         // Hook SensorManager.registerListener globally
         XposedHelpers.findAndHookMethod(
@@ -29,71 +28,53 @@ class Tutorial : IXposedHookLoadPackage {
                     val listener = param.args[0] as SensorEventListener
                     val sensor = param.args[1] as Sensor
 
-                    // Debug: Log sensor registration
-                    XposedBridge.log("Sensor registered: ${sensor.name} (Type: ${sensor.type})")
-
-                    // Hook for accelerometer to spoof data
                     if (sensor.type == Sensor.TYPE_ACCELEROMETER) {
-                        XposedBridge.log("Intercepted accelerometer registration globally")
-
-                        // Hook the listener's onSensorChanged method to log real sensor values
-                        XposedHelpers.findAndHookMethod(
-                            listener.javaClass,
-                            "onSensorChanged",
-                            SensorEvent::class.java,
-                            object : XC_MethodHook() {
-                                override fun beforeHookedMethod(param: MethodHookParam) {
-                                    val event = param.args[0] as SensorEvent
-                                    if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-                                        val x = event.values[0]
-                                        val y = event.values[1]
-                                        val z = event.values[2]
-                                        XposedBridge.log("Real Accelerometer Values: X=$x, Y=$y, Z=$z")
-                                    }
-                                }
-                            }
-                        )
-
-                        // Start a thread to inject fake accelerometer data
-                        Thread {
-                            try {
-                                while (true) {
-                                    val fakeEvent = createFakeSensorEvent(sensor)
-                                    val spoofedValues = floatArrayOf(1.0f, 2.0f, 3.0f) // Example spoofed values
-                                    setSensorValues(fakeEvent, spoofedValues)
-                                    fakeEvent.timestamp = System.nanoTime()
-
-                                    // Debug: Log the spoofed values
-                                    XposedBridge.log("Spoofed Accelerometer Values: X=${spoofedValues[0]}, Y=${spoofedValues[1]}, Z=${spoofedValues[2]}")
-
-                                    listener.onSensorChanged(fakeEvent)
-                                    Thread.sleep(100) // Update frequency (every 100ms)
-                                }
-                            } catch (e: Exception) {
-                                XposedBridge.log("Error in spoofing thread: ${e.message}")
-                            }
-                        }.start()
+                        XposedBridge.log("[Tutorial] Hooking accelerometer listener for ${lpparam.packageName}")
+                        hookListener(listener)
                     }
                 }
             }
         )
     }
 
-    private fun createFakeSensorEvent(sensor: Sensor): SensorEvent {
-        // Create an instance of SensorEvent using reflection
-        val event = XposedHelpers.newInstance(SensorEvent::class.java, 3) as SensorEvent
-        event.sensor = sensor
-        return event
+    private fun hookListener(listener: SensorEventListener) {
+        XposedHelpers.findAndHookMethod(
+            listener.javaClass,
+            "onSensorChanged",
+            SensorEvent::class.java,
+            object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    try {
+                        val event = param.args[0] as SensorEvent
+
+                        // Log real sensor event
+                        val eventHashCode = System.identityHashCode(event)
+                        XposedBridge.log("[Tutorial] Event HashCode: $eventHashCode | Real Values: ${event.values.joinToString()}")
+
+                        // Spoof sensor values directly
+                        if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                            val spoofedValues = floatArrayOf(10.0f, 10.0f, 10.0f) // Example spoofed values
+                            setSensorValues(event, spoofedValues)
+
+                            // Log spoofed values
+                            XposedBridge.log("[Tutorial] Spoofed Values: ${event.values.joinToString()} for Event HashCode: $eventHashCode")
+                        }
+                    } catch (e: Exception) {
+                        XposedBridge.log("[Tutorial] Error in onSensorChanged hook: ${e.message}")
+                    }
+                }
+            }
+        )
     }
 
     private fun setSensorValues(event: SensorEvent, values: FloatArray) {
         try {
-            // Access the 'values' field of SensorEvent using reflection
-            val valuesField: Field = SensorEvent::class.java.getDeclaredField("values")
-            valuesField.isAccessible = true
-            valuesField.set(event, values)
+            val field: Field = SensorEvent::class.java.getDeclaredField("values")
+            field.isAccessible = true
+            field.set(event, values)
+            XposedBridge.log("[Tutorial] Sensor values successfully spoofed")
         } catch (e: Exception) {
-            XposedBridge.log("Error setting sensor values: ${e.message}")
+            XposedBridge.log("[Tutorial] Error setting sensor values: ${e.message}")
         }
     }
 }
